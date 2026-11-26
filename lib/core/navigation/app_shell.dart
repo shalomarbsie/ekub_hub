@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-class AppShell extends StatelessWidget {
+import '../../features/auth/presentation/providers/session_provider.dart';
+
+class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     void openDestination(String routeName) {
       Navigator.of(context).pop();
       context.goNamed(routeName);
@@ -34,6 +37,14 @@ class AppShell extends StatelessWidget {
                 leading: const Icon(Icons.qr_code_scanner),
                 title: const Text('QR Scanner & Join'),
                 onTap: () => openDestination('joinEqub'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.logout),
+                title: const Text('Sign out'),
+                onTap: () {
+                  ref.read(sessionProvider.notifier).signOut();
+                  openDestination('signIn');
+                },
               ),
             ],
           ),
