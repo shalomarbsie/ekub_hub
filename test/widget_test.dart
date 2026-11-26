@@ -12,7 +12,7 @@ void main() {
 
     expect(find.text('Sign In'), findsOneWidget);
 
-    await tester.tap(find.text('Continue to demo'));
+    await tester.tap(find.text('Sign in as Member'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byType(DrawerButton));
@@ -31,10 +31,45 @@ void main() {
     expect(find.text('Equb Details'), findsOneWidget);
     expect(find.text('Equb ID: equb-merchant'), findsOneWidget);
 
+    expect(find.text('Contribution Review'), findsNothing);
+
+    await tester.tap(find.text('Contribution Submission'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Equb ID: equb-merchant\nRound ID: round-merchant-03'),
+      findsOneWidget,
+    );
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Equb Details'), findsOneWidget);
+
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
     expect(find.text('Equb Details'), findsNothing);
     expect(find.text('Merchant Equb'), findsOneWidget);
+
+    await tester.tap(find.text('Family Equb'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Contribution Submission'), findsNothing);
+
+    await tester.tap(find.text('Payout & Draw'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Equb ID: equb-family\nRound ID: round-family-02'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byType(DrawerButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign In'), findsOneWidget);
   });
 }
