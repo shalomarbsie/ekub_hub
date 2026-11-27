@@ -13,7 +13,7 @@ schema: "1"
 title: "Ekub Hub"
 
 # One sentence: "An app that helps [users] to [do what] so that [benefit]."
-summary: "An app that helps Ethiopian Equb and Iddir organizers and members to manage group savings, contributions, payments, and payouts digitally so that they can improve transparency, build trust, and reduce disputes."
+summary: "An app that helps traditional rotating savings (Equb) organizers and members to record contributions, track schedules, and coordinate payout turns transparently so that groups avoid bookkeeping disputes, manual phone follow-ups, and missed meeting draws."
 
 members:
   - name: "Shalom Arbsie"             # full name, as in the student register
