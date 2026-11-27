@@ -217,7 +217,7 @@ return $default(_that.id,_that.fullName,_that.email,_that.phone,_that.createdAt)
 
 class _User implements User {
   const _User({required this.id, required this.fullName, required this.email, required this.phone, required this.createdAt});
-
+  
 
 @override final  String id;
 @override final  String fullName;
