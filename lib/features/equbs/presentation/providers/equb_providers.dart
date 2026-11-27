@@ -5,12 +5,29 @@ import '../../data/in_memory_equb_repository.dart';
 import '../../domain/cycle_period.dart';
 import '../../domain/equb_group.dart';
 import '../../domain/equb_repository.dart';
+import '../../domain/equb_roster_entry.dart';
 import '../../domain/membership.dart';
 
 typedef EqubRoundKey = ({String equbId, String roundId});
 
 final equbRepositoryProvider = Provider<EqubRepository>((ref) {
   return InMemoryEqubRepository();
+});
+
+final dashboardEqubsProvider = Provider<List<EqubGroup>>((ref) {
+  final allGroups = ref.watch(equbRepositoryProvider).allEqubs();
+  final user = ref.watch(sessionProvider);
+  if (user == null) {
+    return const [];
+  }
+
+  return allGroups
+      .where(
+        (group) =>
+            ref.watch(currentMembershipProvider(group.id))?.status ==
+            MembershipStatus.active,
+      )
+      .toList(growable: false);
 });
 
 final equbProvider = Provider.family<EqubGroup?, String>((ref, equbId) {
@@ -80,4 +97,64 @@ final latestCompletedRoundProvider = Provider.family<CyclePeriod?, String>((
   }
 
   return latest;
+});
+
+final equbRosterProvider = Provider.family<List<EqubRosterEntry>, String>((
+  ref,
+  equbId,
+) {
+  final memberships = ref.watch(membershipsForEqubProvider(equbId));
+  final statuses = ref
+      .watch(equbRepositoryProvider)
+      .contributionStatusesForEqub(equbId);
+  final accountRepository = ref.watch(accountRepositoryProvider);
+
+  return memberships
+      .where((membership) => membership.status == MembershipStatus.active)
+      .map(
+        (membership) => EqubRosterEntry(
+          membershipId: membership.id,
+          userId: membership.userId,
+          displayName:
+              accountRepository.findById(membership.userId)?.fullName ??
+              membership.userId,
+          role: membership.role,
+          contributionStatus:
+              statuses[membership.id] ?? ContributionStatus.pending,
+        ),
+      )
+      .toList(growable: false);
+});
+
+final equbAiSummaryProvider = Provider.family<String?, String>((ref, equbId) {
+  final group = ref.watch(equbProvider(equbId));
+  if (group == null) {
+    return null;
+  }
+
+  final roster = ref.watch(equbRosterProvider(equbId));
+  final activeRound = ref.watch(activeRoundProvider(equbId));
+  final completedRound = ref.watch(latestCompletedRoundProvider(equbId));
+
+  final totalCount = roster.length;
+  final paidCount = roster
+      .where((entry) => entry.contributionStatus == ContributionStatus.paid)
+      .length;
+  final collectedAmount = paidCount * group.contributionAmount;
+  final targetAmount = totalCount * group.contributionAmount;
+
+  if (activeRound != null) {
+    final pendingCount = totalCount - paidCount;
+    return 'Round ${activeRound.periodNumber} is open: $paidCount of '
+        '$totalCount active members have paid ($collectedAmount of '
+        '$targetAmount ETB). $pendingCount contribution(s) remaining.';
+  }
+
+  if (completedRound != null) {
+    return 'Round ${completedRound.periodNumber} is complete: $paidCount of '
+        '$totalCount active members contributed ($targetAmount ETB total).';
+  }
+
+  return '${group.title} has $totalCount active member(s) with a '
+      '${group.contributionAmount} ETB ${group.frequency.name} contribution.';
 });

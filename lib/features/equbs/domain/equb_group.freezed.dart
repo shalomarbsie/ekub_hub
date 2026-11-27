@@ -220,7 +220,7 @@ return $default(_that.id,_that.title,_that.description,_that.contributionAmount,
 
 class _EqubGroup implements EqubGroup {
   const _EqubGroup({required this.id, required this.title, required this.description, required this.contributionAmount, required this.frequency, required this.memberLimit, required this.organizerId, required this.createdAt});
-
+  
 
 @override final  String id;
 @override final  String title;

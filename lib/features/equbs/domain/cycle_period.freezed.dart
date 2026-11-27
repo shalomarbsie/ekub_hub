@@ -218,7 +218,7 @@ return $default(_that.id,_that.equbId,_that.periodNumber,_that.deadline,_that.st
 
 class _CyclePeriod implements CyclePeriod {
   const _CyclePeriod({required this.id, required this.equbId, required this.periodNumber, required this.deadline, required this.status, this.winnerMemberId});
-
+  
 
 @override final  String id;
 @override final  String equbId;

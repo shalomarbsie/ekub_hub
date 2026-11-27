@@ -218,7 +218,7 @@ return $default(_that.id,_that.equbId,_that.userId,_that.role,_that.status,_that
 
 class _Membership implements Membership {
   const _Membership({required this.id, required this.equbId, required this.userId, required this.role, required this.status, this.joinedAt});
-
+  
 
 @override final  String id;
 @override final  String equbId;

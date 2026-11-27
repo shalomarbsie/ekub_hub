@@ -2,6 +2,7 @@ import '../../../core/demo/demo_ids.dart';
 import '../domain/cycle_period.dart';
 import '../domain/equb_group.dart';
 import '../domain/equb_repository.dart';
+import '../domain/equb_roster_entry.dart';
 import '../domain/membership.dart';
 
 class InMemoryEqubRepository implements EqubRepository {
@@ -81,6 +82,20 @@ class InMemoryEqubRepository implements EqubRepository {
     ),
   ];
 
+  final Map<String, Map<String, ContributionStatus>> _contributionStatuses = {
+    DemoIds.merchantEqubId: {
+      DemoIds.merchantOrganizerMembershipId: ContributionStatus.paid,
+      DemoIds.merchantMemberMembershipId: ContributionStatus.pending,
+    },
+    DemoIds.familyEqubId: {
+      DemoIds.familyOrganizerMembershipId: ContributionStatus.paid,
+      DemoIds.familyMemberMembershipId: ContributionStatus.paid,
+    },
+  };
+
+  @override
+  List<EqubGroup> allEqubs() => List<EqubGroup>.unmodifiable(_equbs.values);
+
   @override
   EqubGroup? findEqub(String equbId) => _equbs[equbId];
 
@@ -95,6 +110,13 @@ class InMemoryEqubRepository implements EqubRepository {
   List<CyclePeriod> roundsForEqub(String equbId) {
     return List<CyclePeriod>.unmodifiable(
       _rounds.where((round) => round.equbId == equbId),
+    );
+  }
+
+  @override
+  Map<String, ContributionStatus> contributionStatusesForEqub(String equbId) {
+    return Map<String, ContributionStatus>.unmodifiable(
+      _contributionStatuses[equbId] ?? const {},
     );
   }
 }
