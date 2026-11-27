@@ -7,6 +7,7 @@ abstract interface class EqubRepository {
   List<EqubGroup> allEqubs();
   EqubGroup? findEqub(String equbId);
   List<Membership> membershipsForEqub(String equbId);
+  void addMembership(Membership membership);
   List<CyclePeriod> roundsForEqub(String equbId);
   Map<String, ContributionStatus> contributionStatusesForEqub(String equbId);
 

@@ -109,6 +109,11 @@ class InMemoryEqubRepository implements EqubRepository {
   }
 
   @override
+  void addMembership(Membership membership) {
+    _memberships.add(membership);
+  }
+
+  @override
   List<CyclePeriod> roundsForEqub(String equbId) {
     return List<CyclePeriod>.unmodifiable(
       _rounds.where((round) => round.equbId == equbId),
