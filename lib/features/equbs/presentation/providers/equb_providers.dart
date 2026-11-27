@@ -14,8 +14,44 @@ final equbRepositoryProvider = Provider<EqubRepository>((ref) {
   return InMemoryEqubRepository();
 });
 
+final equbGroupsProvider =
+    NotifierProvider<EqubGroupsController, List<EqubGroup>>(
+      EqubGroupsController.new,
+    );
+
+class EqubGroupsController extends Notifier<List<EqubGroup>> {
+  @override
+  List<EqubGroup> build() {
+    return ref.watch(equbRepositoryProvider).allEqubs();
+  }
+
+  EqubGroup createEqub({
+    required String title,
+    required int contributionAmount,
+    required EqubFrequency frequency,
+    required int memberLimit,
+    required String organizerId,
+    required DateTime startDate,
+    String? description,
+  }) {
+    final created = ref
+        .read(equbRepositoryProvider)
+        .createEqub(
+          title: title,
+          contributionAmount: contributionAmount,
+          frequency: frequency,
+          memberLimit: memberLimit,
+          organizerId: organizerId,
+          startDate: startDate,
+          description: description,
+        );
+    state = ref.read(equbRepositoryProvider).allEqubs();
+    return created;
+  }
+}
+
 final dashboardEqubsProvider = Provider<List<EqubGroup>>((ref) {
-  final allGroups = ref.watch(equbRepositoryProvider).allEqubs();
+  final allGroups = ref.watch(equbGroupsProvider);
   final user = ref.watch(sessionProvider);
   if (user == null) {
     return const [];
@@ -31,13 +67,20 @@ final dashboardEqubsProvider = Provider<List<EqubGroup>>((ref) {
 });
 
 final equbProvider = Provider.family<EqubGroup?, String>((ref, equbId) {
-  return ref.watch(equbRepositoryProvider).findEqub(equbId);
+  final groups = ref.watch(equbGroupsProvider);
+  for (final group in groups) {
+    if (group.id == equbId) {
+      return group;
+    }
+  }
+  return null;
 });
 
 final membershipsForEqubProvider = Provider.family<List<Membership>, String>((
   ref,
   equbId,
 ) {
+  ref.watch(equbGroupsProvider);
   return ref.watch(equbRepositoryProvider).membershipsForEqub(equbId);
 });
 
@@ -63,6 +106,7 @@ final activeRoundProvider = Provider.family<CyclePeriod?, String>((
   ref,
   equbId,
 ) {
+  ref.watch(equbGroupsProvider);
   final rounds = ref.watch(equbRepositoryProvider).roundsForEqub(equbId);
   for (final round in rounds) {
     if (round.status == CyclePeriodStatus.open) {
@@ -73,6 +117,7 @@ final activeRoundProvider = Provider.family<CyclePeriod?, String>((
 });
 
 final roundProvider = Provider.family<CyclePeriod?, EqubRoundKey>((ref, key) {
+  ref.watch(equbGroupsProvider);
   final rounds = ref.watch(equbRepositoryProvider).roundsForEqub(key.equbId);
   for (final round in rounds) {
     if (round.id == key.roundId) {
@@ -86,6 +131,7 @@ final latestCompletedRoundProvider = Provider.family<CyclePeriod?, String>((
   ref,
   equbId,
 ) {
+  ref.watch(equbGroupsProvider);
   final rounds = ref.watch(equbRepositoryProvider).roundsForEqub(equbId);
   CyclePeriod? latest;
 
