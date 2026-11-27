@@ -10,4 +10,14 @@ abstract interface class EqubRepository {
   void addMembership(Membership membership);
   List<CyclePeriod> roundsForEqub(String equbId);
   Map<String, ContributionStatus> contributionStatusesForEqub(String equbId);
+
+  EqubGroup createEqub({
+    required String title,
+    required int contributionAmount,
+    required EqubFrequency frequency,
+    required int memberLimit,
+    required String organizerId,
+    required DateTime startDate,
+    String? description,
+  });
 }

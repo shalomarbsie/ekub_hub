@@ -93,6 +93,8 @@ class InMemoryEqubRepository implements EqubRepository {
     },
   };
 
+  int _nextEqubNumber = 1;
+
   @override
   List<EqubGroup> allEqubs() => List<EqubGroup>.unmodifiable(_equbs.values);
 
@@ -123,5 +125,65 @@ class InMemoryEqubRepository implements EqubRepository {
     return Map<String, ContributionStatus>.unmodifiable(
       _contributionStatuses[equbId] ?? const {},
     );
+  }
+
+  @override
+  EqubGroup createEqub({
+    required String title,
+    required int contributionAmount,
+    required EqubFrequency frequency,
+    required int memberLimit,
+    required String organizerId,
+    required DateTime startDate,
+    String? description,
+  }) {
+    final equbId = 'equb-local-${_nextEqubNumber++}';
+    final normalizedTitle = title.trim();
+    final normalizedDescription = (description ?? '').trim().isNotEmpty
+        ? description!.trim()
+        : 'Members declare a ${frequency.name} contribution of $contributionAmount ETB.';
+
+    final group = EqubGroup(
+      id: equbId,
+      title: normalizedTitle,
+      description: normalizedDescription,
+      contributionAmount: contributionAmount,
+      frequency: frequency,
+      memberLimit: memberLimit,
+      organizerId: organizerId,
+      createdAt: startDate,
+    );
+    _equbs[equbId] = group;
+
+    final organizerMembershipId = 'membership-$equbId-organizer';
+    _memberships.add(
+      Membership(
+        id: organizerMembershipId,
+        equbId: equbId,
+        userId: organizerId,
+        role: MembershipRole.organizer,
+        status: MembershipStatus.active,
+        joinedAt: startDate,
+      ),
+    );
+
+    final deadline = frequency == EqubFrequency.weekly
+        ? startDate.add(const Duration(days: 7))
+        : startDate.add(const Duration(days: 30));
+    _rounds.add(
+      CyclePeriod(
+        id: 'round-$equbId-01',
+        equbId: equbId,
+        periodNumber: 1,
+        deadline: deadline,
+        status: CyclePeriodStatus.open,
+      ),
+    );
+
+    _contributionStatuses[equbId] = {
+      organizerMembershipId: ContributionStatus.pending,
+    };
+
+    return group;
   }
 }

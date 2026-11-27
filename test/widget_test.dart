@@ -36,10 +36,8 @@ void main() {
     await tester.tap(find.text('Contribution Submission'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('Equb ID: equb-merchant\nRound ID: round-merchant-03'),
-      findsOneWidget,
-    );
+    expect(find.text('Submit contribution record'), findsOneWidget);
+    expect(find.text('Merchant Equb · Member: Demo Member'), findsOneWidget);
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
@@ -60,10 +58,8 @@ void main() {
     await tester.tap(find.text('Payout & Draw'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('Equb ID: equb-family\nRound ID: round-family-02'),
-      findsOneWidget,
-    );
+    expect(find.text('Round 2 winner'), findsOneWidget);
+    expect(find.text('Back to Equb'), findsOneWidget);
 
     await tester.tap(find.byType(DrawerButton));
     await tester.pumpAndSettle();
