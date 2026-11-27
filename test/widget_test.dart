@@ -58,10 +58,8 @@ void main() {
     await tester.tap(find.text('Payout & Draw'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('Equb ID: equb-family\nRound ID: round-family-02'),
-      findsOneWidget,
-    );
+    expect(find.text('Round 2 winner'), findsOneWidget);
+    expect(find.text('Back to Equb'), findsOneWidget);
 
     await tester.tap(find.byType(DrawerButton));
     await tester.pumpAndSettle();
