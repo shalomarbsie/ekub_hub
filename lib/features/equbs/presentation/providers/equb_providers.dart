@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../auth/presentation/providers/session_provider.dart';
+import '../../../contributions/domain/contribution_record.dart'
+    as contributions;
+import '../../../contributions/presentation/contribution_providers.dart';
 import '../../data/in_memory_equb_repository.dart';
 import '../../domain/cycle_period.dart';
 import '../../domain/equb_group.dart';
@@ -150,25 +153,41 @@ final equbRosterProvider = Provider.family<List<EqubRosterEntry>, String>((
   equbId,
 ) {
   final memberships = ref.watch(membershipsForEqubProvider(equbId));
-  final statuses = ref
-      .watch(equbRepositoryProvider)
-      .contributionStatusesForEqub(equbId);
+  final targetRound =
+      ref.watch(activeRoundProvider(equbId)) ??
+      ref.watch(latestCompletedRoundProvider(equbId));
+  final roundRecords = targetRound == null
+      ? const <contributions.ContributionRecord>[]
+      : ref.watch(
+          contributionsForRoundProvider((
+            equbId: equbId,
+            roundId: targetRound.id,
+          )),
+        );
+  final recordByMemberId = {
+    for (final record in roundRecords) record.memberId: record,
+  };
   final accountRepository = ref.watch(accountRepositoryProvider);
 
   return memberships
       .where((membership) => membership.status == MembershipStatus.active)
-      .map(
-        (membership) => EqubRosterEntry(
+      .map((membership) {
+        final record = recordByMemberId[membership.id];
+        final status =
+            record?.status == contributions.ContributionStatus.approved
+            ? ContributionStatus.paid
+            : ContributionStatus.pending;
+
+        return EqubRosterEntry(
           membershipId: membership.id,
           userId: membership.userId,
           displayName:
               accountRepository.findById(membership.userId)?.fullName ??
               membership.userId,
           role: membership.role,
-          contributionStatus:
-              statuses[membership.id] ?? ContributionStatus.pending,
-        ),
-      )
+          contributionStatus: status,
+        );
+      })
       .toList(growable: false);
 });
 

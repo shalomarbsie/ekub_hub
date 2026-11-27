@@ -88,6 +88,31 @@ void main() {
       );
     });
 
+    test('rejects NaN, Infinity, and non-positive declared amounts', () {
+      final container = ProviderContainer.test();
+      final session = container.read(sessionProvider.notifier);
+      final contributions = container.read(contributionsProvider.notifier);
+
+      session.signInAsDemo(DemoIds.memberUserId);
+
+      for (final invalidAmount in [
+        double.nan,
+        double.infinity,
+        double.negativeInfinity,
+        0.0,
+        -50.0,
+      ]) {
+        expect(
+          () => contributions.submitContributionForCurrentUser(
+            equbId: DemoIds.merchantEqubId,
+            roundId: DemoIds.merchantRoundId,
+            declaredAmount: invalidAmount,
+          ),
+          throwsA(isA<ContributionValidationException>()),
+        );
+      }
+    });
+
     test('persists across sign-out and supports reject, resubmit, and approve', () {
       final container = ProviderContainer.test();
       final session = container.read(sessionProvider.notifier);
@@ -225,7 +250,49 @@ void main() {
     );
 
     testWidgets(
-      'runs full member submit -> sign out -> organizer review -> member approved flow',
+      'rejects NaN and Infinity amounts in ContributionSubmissionScreen form',
+      (tester) async {
+        final container = ProviderContainer.test();
+        container
+            .read(sessionProvider.notifier)
+            .signInAsDemo(DemoIds.memberUserId);
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: const MaterialApp(
+              home: Scaffold(
+                body: ContributionSubmissionScreen(
+                  equbId: DemoIds.merchantEqubId,
+                  roundId: DemoIds.merchantRoundId,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        for (final invalidText in ['NaN', 'Infinity', '-Infinity']) {
+          await tester.enterText(
+            find.byKey(const ValueKey('submission-amount-field')),
+            invalidText,
+          );
+          await _tapVisible(
+            tester,
+            find.byKey(const ValueKey('send-for-review-button')),
+          );
+
+          expect(
+            find.text('Enter a valid finite amount greater than 0.'),
+            findsOneWidget,
+          );
+          expect(find.text('Not submitted'), findsOneWidget);
+        }
+      },
+    );
+
+    testWidgets(
+      'runs full member submit -> sign out -> organizer review -> updated roster and member status',
       (tester) async {
         final container = ProviderContainer.test();
 
@@ -243,20 +310,17 @@ void main() {
         await tester.tap(find.text('Merchant Equb'));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Contribution Submission'));
-        await tester.pumpAndSettle();
+        await _tapVisible(tester, find.text('Contribution Submission'));
 
         expect(find.text('Not submitted'), findsOneWidget);
         await tester.enterText(
           find.byKey(const ValueKey('submission-note-field')),
           'Paid via Telebirr',
         );
-        await tester.ensureVisible(
+        await _tapVisible(
+          tester,
           find.byKey(const ValueKey('send-for-review-button')),
         );
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('send-for-review-button')));
-        await tester.pumpAndSettle();
 
         expect(find.text('Pending review'), findsOneWidget);
         expect(find.text('Submitted (Pending review)'), findsOneWidget);
@@ -272,8 +336,7 @@ void main() {
         await tester.tap(find.text('Merchant Equb'));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Contribution Review'));
-        await tester.pumpAndSettle();
+        await _tapVisible(tester, find.text('Contribution Review'));
 
         expect(find.text('Pending review (1)'), findsOneWidget);
         expect(find.text('Demo Member'), findsOneWidget);
@@ -303,6 +366,19 @@ void main() {
         expect(find.text('Pending review (0)'), findsOneWidget);
         expect(find.text('Approved records (2)'), findsOneWidget);
 
+        await tester.tap(find.byTooltip('Back'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Equb Details'), findsOneWidget);
+        expect(find.text('Paid'), findsNWidgets(2));
+        expect(find.text('Pending'), findsNothing);
+        expect(
+          find.text(
+            'Round 3 is open: 2 of 2 active members have paid (4000 of 4000 ETB). 0 contribution(s) remaining.',
+          ),
+          findsOneWidget,
+        );
+
         await tester.tap(find.byType(DrawerButton));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Sign out'));
@@ -314,12 +390,21 @@ void main() {
         await tester.tap(find.text('Merchant Equb'));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Contribution Submission'));
-        await tester.pumpAndSettle();
+        expect(find.text('Paid'), findsNWidgets(2));
+        expect(find.text('Pending'), findsNothing);
+
+        await _tapVisible(tester, find.text('Contribution Submission'));
 
         expect(find.text('Approved'), findsOneWidget);
         expect(find.text('Approved for this round'), findsOneWidget);
       },
     );
   });
+}
+
+Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
 }

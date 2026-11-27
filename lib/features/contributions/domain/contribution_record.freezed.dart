@@ -223,7 +223,7 @@ return $default(_that.id,_that.equbId,_that.cyclePeriodId,_that.memberId,_that.d
 
 class _ContributionRecord implements ContributionRecord {
   const _ContributionRecord({required this.id, required this.equbId, required this.cyclePeriodId, required this.memberId, required this.declaredAmount, this.note, required this.status, required this.submittedAt, this.reviewerId, this.reviewedAt, this.rejectionReason});
-  
+
 
 @override final  String id;
 @override final  String equbId;
@@ -375,7 +375,7 @@ as ContributionRecord?,
 @override
 @pragma('vm:prefer-inline')
 $MembershipCopyWith<$Res> get membership {
-  
+
   return $MembershipCopyWith<$Res>(_self.membership, (value) {
     return _then(_self.copyWith(membership: value));
   });
@@ -530,7 +530,7 @@ return $default(_that.membership,_that.memberName,_that.record);case _:
 
 class _ContributionRosterEntry implements ContributionRosterEntry {
   const _ContributionRosterEntry({required this.membership, required this.memberName, this.record});
-  
+
 
 @override final  Membership membership;
 @override final  String memberName;
@@ -599,7 +599,7 @@ as ContributionRecord?,
 @override
 @pragma('vm:prefer-inline')
 $MembershipCopyWith<$Res> get membership {
-  
+
   return $MembershipCopyWith<$Res>(_self.membership, (value) {
     return _then(_self.copyWith(membership: value));
   });
@@ -820,7 +820,7 @@ return $default(_that.entries,_that.totalMembers);case _:
 
 class _RoundRosterStatus extends RoundRosterStatus {
   const _RoundRosterStatus({required  List<ContributionRosterEntry> entries, required this.totalMembers}): _entries = entries,super._();
-  
+
 
  final  List<ContributionRosterEntry> _entries;
 @override List<ContributionRosterEntry> get entries {

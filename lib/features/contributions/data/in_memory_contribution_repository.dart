@@ -52,9 +52,9 @@ class InMemoryContributionRepository implements ContributionRepository {
     required double declaredAmount,
     String? note,
   }) {
-    if (declaredAmount <= 0) {
+    if (!declaredAmount.isFinite || declaredAmount <= 0) {
       throw const ContributionValidationException(
-        'Declared amount must be greater than zero.',
+        'Declared amount must be a finite number greater than zero.',
       );
     }
 

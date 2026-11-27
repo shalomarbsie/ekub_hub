@@ -219,8 +219,8 @@ class _ContributionSubmissionScreenState
                     ),
                     validator: (value) {
                       final parsed = double.tryParse(value?.trim() ?? '');
-                      if (parsed == null || parsed <= 0) {
-                        return 'Enter a valid amount greater than 0.';
+                      if (parsed == null || !parsed.isFinite || parsed <= 0) {
+                        return 'Enter a valid finite amount greater than 0.';
                       }
                       return null;
                     },
@@ -878,6 +878,9 @@ String _roundScheduleText(CyclePeriod round) {
 }
 
 String _formatAmount(double amount) {
+  if (!amount.isFinite) {
+    return amount.toString();
+  }
   if (amount == amount.roundToDouble()) {
     return amount.toInt().toString();
   }
