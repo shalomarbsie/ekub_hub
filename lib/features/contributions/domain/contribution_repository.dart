@@ -26,7 +26,6 @@ abstract interface class ContributionRepository {
     required String equbId,
     required String cyclePeriodId,
     required String memberId,
-    required String memberName,
     required double declaredAmount,
     String? note,
   });

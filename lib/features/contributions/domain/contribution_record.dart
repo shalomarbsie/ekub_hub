@@ -1,5 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import '../../equbs/domain/membership.dart';
+
 part 'contribution_record.freezed.dart';
 
 enum ContributionStatus { pending, approved, rejected }
@@ -18,9 +20,8 @@ abstract class ContributionRecord with _$ContributionRecord {
     required String id,
     required String equbId,
     required String cyclePeriodId,
-    // Membership ID within the Equb, not the user ID.
+    // Membership ID within the Equb, not the User ID.
     required String memberId,
-    required String memberName,
     required double declaredAmount,
     String? note,
     required ContributionStatus status,
@@ -32,28 +33,12 @@ abstract class ContributionRecord with _$ContributionRecord {
 }
 
 @freezed
-abstract class ContributionRoundContext with _$ContributionRoundContext {
-  const factory ContributionRoundContext({
-    required String equbId,
-    required String equbTitle,
-    required String roundId,
-    required int roundNumber,
-    required int totalRounds,
-    required double defaultAmount,
-    required String frequencyLabel,
-    required String dueDateLabel,
-    required bool isOpen,
-  }) = _ContributionRoundContext;
-}
-
-@freezed
-abstract class ContributionMemberSlot with _$ContributionMemberSlot {
-  const factory ContributionMemberSlot({
-    required String memberId,
+abstract class ContributionRosterEntry with _$ContributionRosterEntry {
+  const factory ContributionRosterEntry({
+    required Membership membership,
     required String memberName,
-    required String userId,
-    @Default(false) bool isOrganizer,
-  }) = _ContributionMemberSlot;
+    ContributionRecord? record,
+  }) = _ContributionRosterEntry;
 }
 
 @freezed
@@ -61,26 +46,29 @@ abstract class RoundRosterStatus with _$RoundRosterStatus {
   const RoundRosterStatus._();
 
   const factory RoundRosterStatus({
-    required List<ContributionRecord> records,
-    required List<ContributionMemberSlot> notSubmittedMembers,
+    required List<ContributionRosterEntry> entries,
     required int totalMembers,
   }) = _RoundRosterStatus;
 
-  List<ContributionRecord> get pendingRecords => records
-      .where((record) => record.status == ContributionStatus.pending)
+  List<ContributionRosterEntry> get pendingEntries => entries
+      .where((entry) => entry.record?.status == ContributionStatus.pending)
       .toList(growable: false);
 
-  List<ContributionRecord> get approvedRecords => records
-      .where((record) => record.status == ContributionStatus.approved)
+  List<ContributionRosterEntry> get approvedEntries => entries
+      .where((entry) => entry.record?.status == ContributionStatus.approved)
       .toList(growable: false);
 
-  List<ContributionRecord> get rejectedRecords => records
-      .where((record) => record.status == ContributionStatus.rejected)
+  List<ContributionRosterEntry> get rejectedEntries => entries
+      .where((entry) => entry.record?.status == ContributionStatus.rejected)
       .toList(growable: false);
 
-  int get pendingCount => pendingRecords.length;
-  int get approvedCount => approvedRecords.length;
-  int get rejectedCount => rejectedRecords.length;
-  int get notSubmittedCount => notSubmittedMembers.length;
+  List<ContributionRosterEntry> get notSubmittedEntries => entries
+      .where((entry) => entry.record == null)
+      .toList(growable: false);
+
+  int get pendingCount => pendingEntries.length;
+  int get approvedCount => approvedEntries.length;
+  int get rejectedCount => rejectedEntries.length;
+  int get notSubmittedCount => notSubmittedEntries.length;
   bool get isAllApproved => totalMembers > 0 && approvedCount == totalMembers;
 }

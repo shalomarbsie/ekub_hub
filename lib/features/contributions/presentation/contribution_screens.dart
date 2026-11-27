@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../auth/presentation/providers/session_provider.dart';
+import '../../equbs/domain/cycle_period.dart';
+import '../../equbs/domain/membership.dart';
+import '../../equbs/presentation/providers/equb_providers.dart';
 import '../domain/contribution_record.dart';
 import '../domain/contribution_repository.dart';
 import 'contribution_providers.dart';
@@ -32,14 +36,9 @@ class _ContributionSubmissionScreenState
   @override
   void initState() {
     super.initState();
-    final roundContext = ref.read(
-      contributionRoundContextProvider((
-        equbId: widget.equbId,
-        roundId: widget.roundId,
-      )),
-    );
+    final equb = ref.read(equbProvider(widget.equbId));
     _amountController = TextEditingController(
-      text: _formatAmount(roundContext.defaultAmount),
+      text: equb == null ? '' : equb.contributionAmount.toString(),
     );
     _noteController = TextEditingController();
   }
@@ -53,42 +52,104 @@ class _ContributionSubmissionScreenState
 
   @override
   Widget build(BuildContext context) {
-    final rounds = ref.watch(contributionRoundsProvider(widget.equbId));
-    final openRounds = rounds
-        .where((round) => round.isOpen)
-        .toList(growable: false);
-    final selectableRounds = openRounds.isEmpty ? rounds : openRounds;
+    final user = ref.watch(sessionProvider);
+    final equb = ref.watch(equbProvider(widget.equbId));
+    final membership = ref.watch(currentMembershipProvider(widget.equbId));
+    final openRounds = ref.watch(openRoundsForEqubProvider(widget.equbId));
 
     final selectedRoundId = ref.watch(
       selectedSubmissionRoundProvider(widget.roundId),
     );
-    final activeRound = ref.watch(
-      contributionRoundContextProvider((
-        equbId: widget.equbId,
-        roundId: selectedRoundId,
-      )),
-    );
-    final activeMember = ref.watch(
-      activeContributionMemberProvider(widget.equbId),
-    );
-    final existingRecord = ref.watch(
-      memberRoundContributionProvider((
-        roundId: activeRound.roundId,
-        memberId: activeMember.memberId,
-      )),
+    final selectedRound = ref.watch(
+      roundProvider((equbId: widget.equbId, roundId: selectedRoundId)),
     );
 
+    if (equb == null) {
+      return const Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ScreenHeader(
+            title: 'Submit contribution record',
+            subtitle: 'Group unavailable',
+          ),
+          Padding(
+            padding: EdgeInsets.all(16),
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Equb group could not be found.'),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (user == null ||
+        membership == null ||
+        membership.status != MembershipStatus.active) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ScreenHeader(
+            title: 'Submit contribution record',
+            subtitle: equb.title,
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: _AccessNoticeCard(
+              message:
+                  'Sign in as an active member of ${equb.title} to submit a contribution declaration.',
+              showSignInAction: user == null,
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (selectedRound == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ScreenHeader(
+            title: 'Submit contribution record',
+            subtitle: '${equb.title} · Member: ${user.fullName}',
+          ),
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('This round does not belong to the selected Equb.'),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final existingRecord = ref.watch(
+      memberRoundContributionProvider((
+        roundId: selectedRound.id,
+        memberId: membership.id,
+      )),
+    );
+    final isRoundOpen = selectedRound.status == CyclePeriodStatus.open;
     final isLocked =
-        existingRecord != null &&
-        existingRecord.status != ContributionStatus.rejected;
+        !isRoundOpen ||
+        (existingRecord != null &&
+            existingRecord.status != ContributionStatus.rejected);
+
+    final dropdownRounds = openRounds.any((r) => r.id == selectedRound.id)
+        ? openRounds
+        : [selectedRound, ...openRounds];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _ScreenHeader(
           title: 'Submit contribution record',
-          subtitle:
-              '${activeRound.equbTitle} · Member: ${activeMember.memberName}',
+          subtitle: '${equb.title} · Member: ${user.fullName}',
         ),
         Expanded(
           child: SingleChildScrollView(
@@ -102,47 +163,47 @@ class _ContributionSubmissionScreenState
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
                     key: const ValueKey('submission-round-dropdown'),
-                    initialValue:
-                        selectableRounds.any(
-                          (r) => r.roundId == activeRound.roundId,
-                        )
-                        ? activeRound.roundId
-                        : selectableRounds.first.roundId,
+                    initialValue: selectedRound.id,
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
                     items: [
-                      for (final round in selectableRounds)
+                      for (final round in dropdownRounds)
                         DropdownMenuItem(
-                          value: round.roundId,
+                          value: round.id,
                           child: Text(
-                            'Round ${round.roundNumber} · ${round.dueDateLabel}',
+                            'Round ${round.periodNumber} · ${_roundScheduleText(round)}',
                           ),
                         ),
                     ],
-                    onChanged: (nextRoundId) {
-                      if (nextRoundId == null) {
-                        return;
-                      }
-                      ref
-                          .read(
-                            selectedSubmissionRoundProvider(
-                              widget.roundId,
-                            ).notifier,
-                          )
-                          .select(nextRoundId);
-                      final nextContext = ref.read(
-                        contributionRoundContextProvider((
-                          equbId: widget.equbId,
-                          roundId: nextRoundId,
-                        )),
-                      );
-                      _amountController.text = _formatAmount(
-                        nextContext.defaultAmount,
-                      );
-                    },
+                    onChanged: openRounds.length <= 1
+                        ? null
+                        : (nextRoundId) {
+                            if (nextRoundId == null) {
+                              return;
+                            }
+                            ref
+                                .read(
+                                  selectedSubmissionRoundProvider(
+                                    widget.roundId,
+                                  ).notifier,
+                                )
+                                .select(nextRoundId);
+                          },
                   ),
+                  if (!isRoundOpen) ...[
+                    const SizedBox(height: 12),
+                    Card(
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
+                      child: const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Text(
+                          'This round is completed. New contribution declarations are closed.',
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   TextFormField(
                     key: const ValueKey('submission-amount-field'),
@@ -189,12 +250,13 @@ class _ContributionSubmissionScreenState
                     ),
                     onPressed: isLocked
                         ? null
-                        : () => _handleSubmit(
-                            equbId: widget.equbId,
-                            roundId: activeRound.roundId,
-                            member: activeMember,
-                          ),
-                    child: Text(_submitButtonLabel(existingRecord)),
+                        : () => _handleSubmit(roundId: selectedRound.id),
+                    child: Text(
+                      _submitButtonLabel(
+                        isRoundOpen: isRoundOpen,
+                        existingRecord: existingRecord,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -205,7 +267,13 @@ class _ContributionSubmissionScreenState
     );
   }
 
-  String _submitButtonLabel(ContributionRecord? existingRecord) {
+  String _submitButtonLabel({
+    required bool isRoundOpen,
+    required ContributionRecord? existingRecord,
+  }) {
+    if (!isRoundOpen) {
+      return 'Round completed';
+    }
     if (existingRecord == null) {
       return 'Send for review';
     }
@@ -216,11 +284,7 @@ class _ContributionSubmissionScreenState
     };
   }
 
-  void _handleSubmit({
-    required String equbId,
-    required String roundId,
-    required ContributionMemberSlot member,
-  }) {
+  void _handleSubmit({required String roundId}) {
     if (!(_formKey.currentState?.validate() ?? false)) {
       return;
     }
@@ -229,11 +293,9 @@ class _ContributionSubmissionScreenState
     try {
       ref
           .read(contributionsProvider.notifier)
-          .submitContribution(
-            equbId: equbId,
-            cyclePeriodId: roundId,
-            memberId: member.memberId,
-            memberName: member.memberName,
+          .submitContributionForCurrentUser(
+            equbId: widget.equbId,
+            roundId: roundId,
             declaredAmount: amount,
             note: _noteController.text,
           );
@@ -263,26 +325,73 @@ class ContributionReviewScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final roundContext = ref.watch(
-      contributionRoundContextProvider((equbId: equbId, roundId: roundId)),
-    );
+    final user = ref.watch(sessionProvider);
+    final equb = ref.watch(equbProvider(equbId));
+    final round = ref.watch(roundProvider((equbId: equbId, roundId: roundId)));
+    final membership = ref.watch(currentMembershipProvider(equbId));
+
+    if (equb == null || round == null) {
+      return const Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ScreenHeader(
+            title: 'Contribution review',
+            subtitle: 'Round unavailable',
+          ),
+          Padding(
+            padding: EdgeInsets.all(16),
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Equb or round could not be found.'),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final isOrganizer =
+        user != null &&
+        membership != null &&
+        membership.status == MembershipStatus.active &&
+        membership.role == MembershipRole.organizer;
+
+    if (!isOrganizer) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ScreenHeader(
+            title: 'Contribution review',
+            subtitle: '${equb.title} · Round ${round.periodNumber}',
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: _AccessNoticeCard(
+              message:
+                  'Only an active organizer of ${equb.title} can review contribution declarations.',
+              showSignInAction: user == null,
+            ),
+          ),
+        ],
+      );
+    }
+
     final roster = ref.watch(
       roundRosterStatusProvider((equbId: equbId, roundId: roundId)),
     );
-    final reviewerId = ref.watch(activeContributionReviewerIdProvider);
-
-    final pending = roster.pendingRecords;
-    final notSubmitted = roster.notSubmittedMembers;
-    final approved = roster.approvedRecords;
-    final rejected = roster.rejectedRecords;
+    final pending = roster.pendingEntries;
+    final notSubmitted = roster.notSubmittedEntries;
+    final approved = roster.approvedEntries;
+    final rejected = roster.rejectedEntries;
+    final isRoundOpen = round.status == CyclePeriodStatus.open;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _ScreenHeader(
           title: 'Contribution review',
-          subtitle:
-              '${roundContext.equbTitle} · Round ${roundContext.roundNumber}',
+          subtitle: '${equb.title} · Round ${round.periodNumber}',
         ),
         Expanded(
           child: ListView(
@@ -292,9 +401,13 @@ class ContributionReviewScreen extends ConsumerWidget {
                 alignment: Alignment.centerLeft,
                 child: Chip(
                   avatar: const Icon(Icons.verified_user_outlined, size: 18),
-                  label: Text('Organizer session: $reviewerId'),
+                  label: Text('Organizer: ${user.fullName}'),
                 ),
               ),
+              if (!isRoundOpen) ...[
+                const SizedBox(height: 8),
+                const Text('Round completed (read-only view).'),
+              ],
               const SizedBox(height: 16),
               Text(
                 'Pending review (${pending.length})',
@@ -311,11 +424,13 @@ class ContributionReviewScreen extends ConsumerWidget {
                   ),
                 )
               else
-                for (final record in pending) ...[
+                for (final entry in pending) ...[
                   _PendingReviewCard(
-                    key: ValueKey('pending-card-${record.id}'),
-                    record: record,
-                    reviewerId: reviewerId,
+                    key: ValueKey('pending-card-${entry.record!.id}'),
+                    equbId: equbId,
+                    memberName: entry.memberName,
+                    record: entry.record!,
+                    canReviewActions: isRoundOpen,
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -332,8 +447,8 @@ class ContributionReviewScreen extends ConsumerWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    for (final member in notSubmitted)
-                      Chip(label: Text(member.memberName)),
+                    for (final entry in notSubmitted)
+                      Chip(label: Text(entry.memberName)),
                   ],
                 ),
               const SizedBox(height: 16),
@@ -344,8 +459,8 @@ class ContributionReviewScreen extends ConsumerWidget {
                   if (approved.isEmpty)
                     const ListTile(title: Text('No approved records yet.'))
                   else
-                    for (final record in approved)
-                      _ReviewedRecordTile(record: record),
+                    for (final entry in approved)
+                      _ReviewedRecordTile(entry: entry),
                 ],
               ),
               if (rejected.isNotEmpty)
@@ -353,8 +468,8 @@ class ContributionReviewScreen extends ConsumerWidget {
                   key: const ValueKey('rejected-records-tile'),
                   title: Text('Rejected records (${rejected.length})'),
                   children: [
-                    for (final record in rejected)
-                      _ReviewedRecordTile(record: record),
+                    for (final entry in rejected)
+                      _ReviewedRecordTile(entry: entry),
                   ],
                 ),
             ],
@@ -419,6 +534,39 @@ class _ScreenHeader extends StatelessWidget {
         ),
         const Divider(height: 1),
       ],
+    );
+  }
+}
+
+class _AccessNoticeCard extends StatelessWidget {
+  const _AccessNoticeCard({
+    required this.message,
+    required this.showSignInAction,
+  });
+
+  final String message;
+  final bool showSignInAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final router = GoRouter.maybeOf(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            if (showSignInAction && router != null) ...[
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () => router.goNamed('signIn'),
+                child: const Text('Go to Sign In'),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -509,12 +657,16 @@ class _SubmissionStatusCard extends StatelessWidget {
 class _PendingReviewCard extends ConsumerStatefulWidget {
   const _PendingReviewCard({
     super.key,
+    required this.equbId,
+    required this.memberName,
     required this.record,
-    required this.reviewerId,
+    required this.canReviewActions,
   });
 
+  final String equbId;
+  final String memberName;
   final ContributionRecord record;
-  final String reviewerId;
+  final bool canReviewActions;
 
   @override
   ConsumerState<_PendingReviewCard> createState() => _PendingReviewCardState();
@@ -547,7 +699,7 @@ class _PendingReviewCardState extends ConsumerState<_PendingReviewCard> {
                 children: [
                   Expanded(
                     child: Text(
-                      record.memberName,
+                      widget.memberName,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
@@ -558,49 +710,51 @@ class _PendingReviewCardState extends ConsumerState<_PendingReviewCard> {
               Text('Declared: ${_formatAmount(record.declaredAmount)} ETB'),
               if (record.note != null) Text('Note: ${record.note}'),
               Text('Submitted: ${_formatTimestamp(record.submittedAt)}'),
-              const SizedBox(height: 12),
-              TextFormField(
-                key: ValueKey('reject-reason-${record.id}'),
-                controller: _reasonController,
-                decoration: const InputDecoration(
-                  labelText: 'Reason (required to reject)',
-                  border: OutlineInputBorder(),
-                  isDense: true,
+              if (widget.canReviewActions) ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: ValueKey('reject-reason-${record.id}'),
+                  controller: _reasonController,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason (required to reject)',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Reason is required to reject a contribution.';
+                    }
+                    return null;
+                  },
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Reason is required to reject a contribution.';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton(
-                      key: ValueKey('approve-btn-${record.id}'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _brandGreen,
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton(
+                        key: ValueKey('approve-btn-${record.id}'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _brandGreen,
+                        ),
+                        onPressed: () => _approve(record),
+                        child: const Text('Approve'),
                       ),
-                      onPressed: () => _approve(record),
-                      child: const Text('Approve'),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton(
-                      key: ValueKey('reject-btn-${record.id}'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: errorColor,
-                        side: BorderSide(color: errorColor),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton(
+                        key: ValueKey('reject-btn-${record.id}'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: errorColor,
+                          side: BorderSide(color: errorColor),
+                        ),
+                        onPressed: () => _reject(record),
+                        child: const Text('Reject'),
                       ),
-                      onPressed: () => _reject(record),
-                      child: const Text('Reject'),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -613,11 +767,11 @@ class _PendingReviewCardState extends ConsumerState<_PendingReviewCard> {
       ref
           .read(contributionsProvider.notifier)
           .approveContribution(
+            equbId: widget.equbId,
             contributionId: record.id,
-            reviewerId: widget.reviewerId,
           );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Approved ${record.memberName}\'s record.')),
+        SnackBar(content: Text('Approved ${widget.memberName}\'s record.')),
       );
     } on ContributionValidationException catch (error) {
       ScaffoldMessenger.of(
@@ -634,12 +788,12 @@ class _PendingReviewCardState extends ConsumerState<_PendingReviewCard> {
       ref
           .read(contributionsProvider.notifier)
           .rejectContribution(
+            equbId: widget.equbId,
             contributionId: record.id,
-            reviewerId: widget.reviewerId,
             reason: _reasonController.text,
           );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Rejected ${record.memberName}\'s record.')),
+        SnackBar(content: Text('Rejected ${widget.memberName}\'s record.')),
       );
     } on ContributionValidationException catch (error) {
       ScaffoldMessenger.of(
@@ -650,12 +804,13 @@ class _PendingReviewCardState extends ConsumerState<_PendingReviewCard> {
 }
 
 class _ReviewedRecordTile extends StatelessWidget {
-  const _ReviewedRecordTile({required this.record});
+  const _ReviewedRecordTile({required this.entry});
 
-  final ContributionRecord record;
+  final ContributionRosterEntry entry;
 
   @override
   Widget build(BuildContext context) {
+    final record = entry.record!;
     final details = <String>[
       '${_formatAmount(record.declaredAmount)} ETB',
       if (record.note != null) record.note!,
@@ -664,7 +819,7 @@ class _ReviewedRecordTile extends StatelessWidget {
 
     return ListTile(
       dense: true,
-      title: Text(record.memberName),
+      title: Text(entry.memberName),
       subtitle: Text(details),
       trailing: _StatusBadge(status: record.status),
     );
@@ -715,6 +870,13 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
+String _roundScheduleText(CyclePeriod round) {
+  final date = '${round.deadline.year}-${round.deadline.month.toString().padLeft(2, '0')}-${round.deadline.day.toString().padLeft(2, '0')}';
+  return round.status == CyclePeriodStatus.open
+      ? 'due $date'
+      : 'completed $date';
+}
+
 String _formatAmount(double amount) {
   if (amount == amount.roundToDouble()) {
     return amount.toInt().toString();
@@ -723,7 +885,8 @@ String _formatAmount(double amount) {
 }
 
 String _formatTimestamp(DateTime timestamp) {
-  final hour = timestamp.hour.toString().padLeft(2, '0');
-  final minute = timestamp.minute.toString().padLeft(2, '0');
-  return '${timestamp.year}-${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')} $hour:$minute';
+  final local = timestamp.toLocal();
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} $hour:$minute';
 }

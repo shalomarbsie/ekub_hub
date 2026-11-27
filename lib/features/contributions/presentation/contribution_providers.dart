@@ -1,5 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../auth/presentation/providers/session_provider.dart';
+import '../../equbs/domain/cycle_period.dart';
+import '../../equbs/domain/membership.dart';
+import '../../equbs/presentation/providers/equb_providers.dart';
 import '../data/in_memory_contribution_repository.dart';
 import '../domain/contribution_record.dart';
 import '../domain/contribution_repository.dart';
@@ -15,20 +19,31 @@ class ContributionsNotifier extends Notifier<List<ContributionRecord>> {
     return repository.getAllContributions();
   }
 
-  ContributionRecord submitContribution({
+  ContributionRecord submitContributionForCurrentUser({
     required String equbId,
-    required String cyclePeriodId,
-    required String memberId,
-    required String memberName,
+    required String roundId,
     required double declaredAmount,
     String? note,
   }) {
+    final membership = ref.read(currentMembershipProvider(equbId));
+    if (membership == null || membership.status != MembershipStatus.active) {
+      throw const ContributionValidationException(
+        'An active membership in this Equb is required to submit.',
+      );
+    }
+
+    final round = ref.read(roundProvider((equbId: equbId, roundId: roundId)));
+    if (round == null || round.status != CyclePeriodStatus.open) {
+      throw const ContributionValidationException(
+        'Contributions can only be submitted for an open round.',
+      );
+    }
+
     final repository = ref.read(contributionRepositoryProvider);
     final created = repository.submitContribution(
       equbId: equbId,
-      cyclePeriodId: cyclePeriodId,
-      memberId: memberId,
-      memberName: memberName,
+      cyclePeriodId: round.id,
+      memberId: membership.id,
       declaredAmount: declaredAmount,
       note: note,
     );
@@ -37,9 +52,10 @@ class ContributionsNotifier extends Notifier<List<ContributionRecord>> {
   }
 
   ContributionRecord approveContribution({
+    required String equbId,
     required String contributionId,
-    required String reviewerId,
   }) {
+    final reviewerId = _requireOrganizerForContribution(equbId, contributionId);
     final repository = ref.read(contributionRepositoryProvider);
     final updated = repository.approveContribution(
       contributionId: contributionId,
@@ -50,10 +66,11 @@ class ContributionsNotifier extends Notifier<List<ContributionRecord>> {
   }
 
   ContributionRecord rejectContribution({
+    required String equbId,
     required String contributionId,
-    required String reviewerId,
     required String reason,
   }) {
+    final reviewerId = _requireOrganizerForContribution(equbId, contributionId);
     final repository = ref.read(contributionRepositoryProvider);
     final updated = repository.rejectContribution(
       contributionId: contributionId,
@@ -63,6 +80,29 @@ class ContributionsNotifier extends Notifier<List<ContributionRecord>> {
     state = repository.getAllContributions();
     return updated;
   }
+
+  String _requireOrganizerForContribution(String equbId, String contributionId) {
+    final user = ref.read(sessionProvider);
+    final membership = ref.read(currentMembershipProvider(equbId));
+    if (user == null ||
+        membership == null ||
+        membership.status != MembershipStatus.active ||
+        membership.role != MembershipRole.organizer) {
+      throw const ContributionValidationException(
+        'Only an active organizer of this Equb can review contributions.',
+      );
+    }
+
+    for (final record in state) {
+      if (record.id == contributionId && record.equbId != equbId) {
+        throw const ContributionValidationException(
+          'Contribution record does not belong to this Equb.',
+        );
+      }
+    }
+
+    return user.id;
+  }
 }
 
 final contributionsProvider =
@@ -70,68 +110,14 @@ final contributionsProvider =
       ContributionsNotifier.new,
     );
 
-final contributionRoundsProvider =
-    Provider.family<List<ContributionRoundContext>, String>(
-      (ref, equbId) => defaultContributionRoundsForEqub(equbId),
-    );
-
-final contributionMembersProvider =
-    Provider.family<List<ContributionMemberSlot>, String>(
-      (ref, equbId) => defaultContributionMembersForEqub(equbId),
-    );
-
-// TODO: read from the signed-in session provider once auth session state is merged.
-final activeContributionMemberProvider =
-    Provider.family<ContributionMemberSlot, String>((ref, equbId) {
-      final members = ref.watch(contributionMembersProvider(equbId));
-      for (final member in members) {
-        if (member.userId == 'user-member') {
-          return member;
-        }
-      }
-      for (final member in members) {
-        if (!member.isOrganizer) {
-          return member;
-        }
-      }
-      return members.first;
-    });
-
-final activeContributionReviewerIdProvider = Provider<String>(
-  (ref) => 'user-organizer',
-);
-
-final contributionRoundContextProvider =
-    Provider.family<ContributionRoundContext, ({String equbId, String roundId})>((
-      ref,
-      params,
-    ) {
-      final rounds = ref.watch(contributionRoundsProvider(params.equbId));
-      for (final round in rounds) {
-        if (round.roundId == params.roundId) {
-          return round;
-        }
-      }
-      // Fallback if a newly created round isn't in the demo seed list.
-      final template = rounds.first;
-      return template.copyWith(
-        roundId: params.roundId,
-        dueDateLabel: 'open round',
-        isOpen: true,
-      );
-    });
-
-final roundContributionsProvider =
-    Provider.family<List<ContributionRecord>, ({String equbId, String roundId})>((
-      ref,
-      params,
-    ) {
+final contributionsForRoundProvider =
+    Provider.family<List<ContributionRecord>, EqubRoundKey>((ref, key) {
       final all = ref.watch(contributionsProvider);
       return all
           .where(
             (record) =>
-                record.equbId == params.equbId &&
-                record.cyclePeriodId == params.roundId,
+                record.equbId == key.equbId &&
+                record.cyclePeriodId == key.roundId,
           )
           .toList(growable: false);
     });
@@ -151,25 +137,41 @@ final memberRoundContributionProvider =
       return null;
     });
 
+final openRoundsForEqubProvider = Provider.family<List<CyclePeriod>, String>((
+  ref,
+  equbId,
+) {
+  final rounds = ref.watch(equbRepositoryProvider).roundsForEqub(equbId);
+  return rounds
+      .where((round) => round.status == CyclePeriodStatus.open)
+      .toList(growable: false);
+});
+
 final roundRosterStatusProvider =
-    Provider.family<RoundRosterStatus, ({String equbId, String roundId})>((
-      ref,
-      params,
-    ) {
-      final records = ref.watch(roundContributionsProvider(params));
-      final members = ref.watch(contributionMembersProvider(params.equbId));
-      final submittedMemberIds = {
-        for (final record in records) record.memberId,
+    Provider.family<RoundRosterStatus, EqubRoundKey>((ref, key) {
+      final memberships = ref.watch(membershipsForEqubProvider(key.equbId));
+      final records = ref.watch(contributionsForRoundProvider(key));
+      final accountRepository = ref.watch(accountRepositoryProvider);
+
+      final recordByMemberId = {
+        for (final record in records) record.memberId: record,
       };
-      final notSubmitted = members
-          .where((member) => !submittedMemberIds.contains(member.memberId))
+      final activeMemberships = memberships
+          .where((membership) => membership.status == MembershipStatus.active)
           .toList(growable: false);
 
-      return RoundRosterStatus(
-        records: records,
-        notSubmittedMembers: notSubmitted,
-        totalMembers: members.length,
-      );
+      final entries = activeMemberships
+          .map((membership) {
+            final user = accountRepository.findById(membership.userId);
+            return ContributionRosterEntry(
+              membership: membership,
+              memberName: user?.fullName ?? membership.userId,
+              record: recordByMemberId[membership.id],
+            );
+          })
+          .toList(growable: false);
+
+      return RoundRosterStatus(entries: entries, totalMembers: entries.length);
     });
 
 class SelectedSubmissionRoundNotifier extends Notifier<String> {
